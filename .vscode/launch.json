@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Food Expiry App",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_simple.py",
+
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "FLASK_DEBUG": "1"
+            }
+        },
+        {
+            "name": "Run Connectivity Diagnostics",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug_diagnostics.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "List Available Models",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/list_models.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}

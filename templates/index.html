@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Food Expiry Detector - Glass Dashboard</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Boxicons -->
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Socket.io -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        :root {
+            /* Glassmorphism Palette - User Requested Specs */
+            --bg-dark: #121212;
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            
+            --accent-teal: #2DD4BF;
+            --accent-gold: #FBBF24;
+            --danger-red: #EF4444;
+            
+            --text-main: #FFFFFF;
+            --text-muted: #E2E8F0;
+            
+            --bg-overlay: rgba(0, 0, 0, 0.5);
+            --radius-lg: 16px;
+            --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+
+
+        * { font-family: 'Inter', sans-serif; box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image: linear-gradient(var(--bg-overlay), var(--bg-overlay)), url('/static/images/kitchen_bg.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+            overflow-x: hidden;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3); /* Stronger shadow for text over light glass */
+        }
+
+        /* --- Sidebar --- */
+        .sidebar {
+            width: 250px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-right: 1px solid var(--glass-border);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 1000;
+            padding: 32px 0;
+            box-shadow: var(--glass-shadow);
+        }
+
+        .sidebar-logo {
+            padding: 0 32px 32px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--accent-teal);
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .sidebar-nav { flex: 1; padding: 0 16px; }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            color: var(--text-muted);
+            text-decoration: none;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            transition: var(--transition);
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid transparent;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+
+        .nav-item i { font-size: 1.4rem; }
+        .nav-item:hover, .nav-item.active {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--glass-border);
+            color: var(--text-main);
+        }
+        .nav-item.active { color: var(--accent-teal); box-shadow: 0 0 15px rgba(45, 212, 191, 0.2); }
+
+        /* --- Main Content --- */
+        .main-content {
+            margin-left: 250px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* --- Header --- */
+        .header {
+            height: 80px;
+            padding: 0 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(18, 18, 18, 0.2);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--glass-border);
+            position: sticky;
+            top: 0;
+            z-index: 900;
+        }
+
+        .search-container { position: relative; width: 400px; }
+        .search-container i {
+            position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-muted);
+        }
+        .search-input {
+            width: 100%;
+            padding: 12px 16px 12px 48px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 25px;
+            color: var(--text-main);
+            outline: none;
+            transition: var(--transition);
+        }
+        .search-input:focus { border-color: var(--accent-teal); box-shadow: 0 0 15px rgba(45, 212, 191, 0.1); }
+
+        .header-actions { display: flex; align-items: center; gap: 24px; }
+        .icon-btn { color: var(--text-muted); font-size: 1.5rem; cursor: pointer; transition: var(--transition); }
+        .icon-btn:hover { color: var(--accent-teal); text-shadow: 0 0 10px rgba(45, 212, 191, 0.5); }
+
+        /* --- View Sections --- */
+        .view-section { padding: 40px; display: none; }
+        .view-section.active { display: block; animation: glassFadeIn 0.6s ease-out; }
+
+        @keyframes glassFadeIn {
+            from { opacity: 0; transform: scale(0.98) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        /* --- Glass Cards --- */
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            box-shadow: var(--glass-shadow);
+            transition: var(--transition);
+        }
+        .glass-card:hover { transform: translateY(-4px); border-color: rgba(255, 255, 255, 0.2); }
+
+        /* --- Stats Grid --- */
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 40px; }
+        .stat-label { color: var(--text-muted); font-size: 0.875rem; font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-value { font-size: 2.25rem; font-weight: 800; color: var(--text-main); }
+        .stat-trend { margin-top: 12px; display: flex; align-items: center; gap: 6px; font-size: 0.875rem; }
+
+        /* --- Content Grid --- */
+        .content-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 40px; }
+
+        .card-title { font-size: 1.25rem; font-weight: 600; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
+        .card-title i { color: var(--accent-teal); }
+
+        /* --- Table --- */
+        .table-container { width: 100%; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { padding: 14px 16px; color: var(--text-muted); font-size: 0.875rem; font-weight: 600; border-bottom: 1px solid var(--glass-border); }
+        td { padding: 18px 16px; border-bottom: 1px solid var(--glass-border); font-size: 0.95rem; }
+        tr:hover td { background: rgba(255, 255, 255, 0.03); }
+
+        .badge {
+            padding: 6px 12px; border-radius: 30px; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;
+            backdrop-filter: blur(4px);
+        }
+        .badge-fresh { background: rgba(45, 212, 191, 0.15); color: var(--accent-teal); border: 1px solid rgba(45, 212, 191, 0.2); }
+        .badge-soon { background: rgba(251, 191, 36, 0.15); color: var(--accent-gold); border: 1px solid rgba(251, 191, 36, 0.2); }
+        .badge-expired { background: rgba(239, 68, 68, 0.15); color: var(--danger-red); border: 1px solid rgba(239, 68, 68, 0.2); }
+
+        /* --- Buttons --- */
+        .btn {
+            display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px 24px; border-radius: 12px;
+            font-weight: 700; cursor: pointer; transition: var(--transition); border: 1px solid transparent; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px;
+        }
+        .btn-teal { background: var(--accent-teal); color: var(--bg-dark); box-shadow: 0 4px 15px rgba(45, 212, 191, 0.3); }
+        .btn-teal:hover { transform: scale(1.02); opacity: 0.9; box-shadow: 0 6px 20px rgba(45, 212, 191, 0.4); }
+        .btn-glass { background: var(--glass-bg); color: var(--text-main); border-color: var(--glass-border); }
+        .btn-glass:hover { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.3); }
+
+        /* --- Form Elements --- */
+        .form-group { margin-bottom: 24px; }
+        .form-label { display: block; margin-bottom: 10px; color: var(--text-muted); font-size: 0.9rem; font-weight: 500; }
+        .form-input {
+            width: 100%; padding: 14px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--glass-border); border-radius: 12px;
+            color: var(--text-main); outline: none; transition: var(--transition);
+        }
+        .form-input:focus { border-color: var(--accent-teal); background: rgba(255, 255, 255, 0.08); }
+
+        .upload-zone {
+            border: 2px dashed var(--glass-border); border-radius: var(--radius-lg); padding: 50px; text-align: center; cursor: pointer; transition: var(--transition);
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: 0 0 20px rgba(45, 212, 191, 0.05);
+            position: relative;
+            overflow: hidden;
+        }
+        .upload-zone::after {
+            content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(45, 212, 191, 0.1), transparent);
+            animation: scannerGlow 3s infinite;
+        }
+        @keyframes scannerGlow {
+            0% { left: -100%; }
+            100% { left: 200%; }
+        }
+        .upload-zone:hover { border-color: var(--accent-teal); background: rgba(45, 212, 191, 0.1); }
+        .upload-zone i { font-size: 3.5rem; color: var(--text-muted); margin-bottom: 20px; transition: var(--transition); }
+        .upload-zone:hover i { color: var(--accent-teal); transform: translateY(-5px); }
+
+        #upload-preview { max-width: 100%; border-radius: 12px; margin-top: 24px; display: none; border: 1px solid var(--glass-border); }
+
+        /* --- Loader --- */
+        .loader { display: none; flex-direction: column; align-items: center; padding: 30px; }
+        .spinner {
+            width: 48px; height: 48px; border: 4px solid rgba(255, 255, 255, 0.1); border-top-color: var(--accent-teal);
+            border-radius: 50%; animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <i class='bx bxs-thermometer' style="font-size: 1.75rem;"></i>
+            <span>FOOD CRYSTAL</span>
+        </div>
+        <nav class="sidebar-nav">
+            <button class="nav-item active" onclick="switchView('overview')">
+                <i class='bx bxs-dashboard'></i> Dashboard
+            </button>
+            <button class="nav-item" onclick="switchView('scan')">
+                <i class='bx bxs-camera'></i> Scan Food
+            </button>
+            <button class="nav-item" onclick="switchView('inventory')">
+                <i class='bx bxs-spreadsheet'></i> Inventory
+            </button>
+            <button class="nav-item" onclick="switchView('alerts')">
+                <i class='bx bxs-bell'></i> Alerts
+            </button>
+            <button class="nav-item" onclick="switchView('reports')">
+                <i class='bx bxs-pie-chart-alt-2'></i> Analytics
+            </button>
+            <button class="nav-item" onclick="switchView('settings')">
+                <i class='bx bxs-cog'></i> Settings
+            </button>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <!-- Header -->
+        <header class="header">
+            <div class="search-container">
+                <i class='bx bx-search'></i>
+                <input type="text" class="search-input" placeholder="Search the larder...">
+            </div>
+            <div class="header-actions">
+                <div class="icon-btn" style="position: relative;">
+                    <i class='bx bx-bell'></i>
+                    {% if expiring_soon_count > 0 %}
+                    <span style="position: absolute; top: 0; right: 0; width: 8px; height: 8px; background: var(--accent-gold); border-radius: 50%; border: 2px solid var(--bg-dark);"></span>
+                    {% endif %}
+                </div>
+            </div>
+        </header>
+
+        <!-- Overview -->
+        <section id="overview" class="view-section active">
+            <div class="stats-grid">
+                <div class="glass-card">
+                    <div class="stat-label">Stock Inventory</div>
+                    <div class="stat-value">{{ total_items }}</div>
+                    <div class="stat-trend" style="color: var(--accent-teal);">
+                        <i class='bx bx-trending-up'></i> <span style="font-weight: 600;">Optimal levels</span>
+                    </div>
+                </div>
+                <div class="glass-card">
+                    <div class="stat-label">Expiring Soon</div>
+                    <div class="stat-value" style="color: var(--accent-gold);">{{ expiring_soon_count }}</div>
+                    <div class="stat-trend" style="color: var(--accent-gold);">
+                        <i class='bx bx-time-five'></i> <span>Priority items</span>
+                    </div>
+                </div>
+                <div class="glass-card">
+                    <div class="stat-label">Wastage Alert</div>
+                    <div class="stat-value" style="color: var(--danger-red);">{{ expired_count }}</div>
+                    <div class="stat-trend" style="color: var(--danger-red);">
+                        <i class='bx bxs-error-circle'></i> <span>Requires attention</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-grid">
+                <div class="glass-card">
+                    <h2 class="card-title"><i class='bx bx-line-chart'></i> Expiry Dynamics</h2>
+                    <div style="height: 300px;"><canvas id="trendsChart"></canvas></div>
+                </div>
+                <div class="glass-card">
+                    <h2 class="card-title"><i class='bx bx-bolt-circle'></i> Fast Stream</h2>
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <button class="btn btn-teal" onclick="switchView('scan')">
+                            <i class='bx bx-scan'></i> NEW AI SCAN
+                        </button>
+                        <button class="btn btn-glass" onclick="switchView('inventory')">
+                            <i class='bx bx-plus'></i> MANUAL LOG
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card">
+                <h2 class="card-title"><i class='bx bx-history'></i> Recent Scan Stream</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ITEM</th>
+                                <th>ORIGIN</th>
+                                <th>VITALITY</th>
+                                <th>EXPIRY ESTIMATE</th>
+                                <th>ACTION</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if history %}
+                                {% for record in history[:5] %}
+                                <tr>
+                                    <td>
+                                        <div style="display: flex; align-items: center; gap: 16px;">
+                                            {% if record.image|length > 100 %}
+                                                <img src="data:image/jpeg;base64,{{ record.image }}" style="width: 40px; height: 40px; border-radius: 10px; object-fit: cover; border: 1px solid var(--glass-border);">
+                                            {% else %}
+                                                <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; border: 1px solid var(--glass-border);">
+                                                    <i class='bx bx-cube' style="font-size: 1.25rem; color: var(--text-muted);"></i>
+                                                </div>
+                                            {% endif %}
+                                            <span style="font-weight: 600;">{{ record.product }}</span>
+                                        </div>
+                                    </td>
+                                    <td><span style="font-size: 0.8rem; color: var(--text-muted);">{{ record.source }}</span></td>
+                                    <td>
+                                        {% if 'Fresh' in record.label %}
+                                            <span class="badge badge-fresh">FRESH</span>
+                                        {% elif 'Spoil' in record.label %}
+                                            <span class="badge badge-soon">SOON</span>
+                                        {% else %}
+                                            <span class="badge badge-expired">EXPIRED</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><span style="font-weight: 500;">{{ record.expiry }}</span></td>
+                                    <td>
+                                        <form onsubmit="deleteItem(event, '{{ record.id }}')" style="margin:0;">
+                                            <input type="hidden" name="id" value="{{ record.id }}" />
+                                            <button type="submit" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size: 1.25rem; transition: var(--transition);"><i class='bx bx-trash-alt'></i></button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No scan history detected.</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Scan -->
+        <section id="scan" class="view-section">
+            <h2 style="margin-bottom: 32px; font-weight: 700; display: flex; align-items: center; gap: 15px;">
+                <i class='bx bx-camera' style="color: var(--accent-teal);"></i> AI OPTICAL ANALYSIS
+            </h2>
+            <div class="content-grid" style="grid-template-columns: 1fr 1fr;">
+                <div class="glass-card">
+                    <!-- Toggle Switch -->
+                    <div style="display: flex; background: rgba(255,255,255,0.05); padding: 5px; border-radius: 12px; margin-bottom: 24px; border: 1px solid rgba(255,255,255,0.1);">
+                        <button type="button" onclick="switchScanner('camera')" id="btn-tab-camera" style="flex: 1; padding: 10px; border: none; border-radius: 8px; background: var(--accent-teal); color: black; font-weight: 700; cursor: pointer; transition: all 0.3s;">
+                            <i class='bx bx-camera'></i> CAMERA
+                        </button>
+                        <button type="button" onclick="switchScanner('upload')" id="btn-tab-upload" style="flex: 1; padding: 10px; border: none; border-radius: 8px; background: transparent; color: white; font-weight: 700; cursor: pointer; transition: all 0.3s;">
+                            <i class='bx bx-cloud-upload'></i> UPLOAD
+                        </button>
+                    </div>
+
+                    <!-- Camera Section -->
+                    <div id="section-camera">
+                        <div id="scanner-container" style="position: relative; margin-bottom: 20px; border-radius: 15px; overflow: hidden; border: 2px solid var(--accent-teal); box-shadow: 0 0 20px rgba(45, 212, 191, 0.2); min-height: 200px; background: #000; display: flex; align-items: center; justify-content: center;">
+                            <video id="video" autoplay playsinline style="width: 100%; display: none; filter: brightness(1.1) contrast(1.1);"></video>
+                            <canvas id="canvas" style="display: none;"></canvas>
+                            <div id="camera-placeholder" style="text-align: center; color: var(--text-muted);">
+                                <i class='bx bx-video-off' style="font-size: 3rem; margin-bottom: 10px; opacity: 0.5;"></i>
+                                <p>SENSOR STANDBY</p>
+                            </div>
+                            <div id="live-indicator" style="display: none; position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 20px; font-size: 0.7rem; color: var(--accent-teal); font-weight: 700; align-items: center; gap: 5px;">
+                                <span style="width: 8px; height: 8px; background: #FF3B30; border-radius: 50%; display: inline-block; box-shadow: 0 0 5px #FF3B30;"></span>
+                                LIVE SENSOR
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 12px;">
+                            <button type="button" id="start-camera" class="btn btn-teal" style="flex: 1;">
+                                <i class='bx bx-power-off'></i> ACTIVATE SENSOR
+                            </button>
+                            <button type="button" id="capture-image" class="btn btn-primary" style="flex: 1; display: none; background: linear-gradient(135deg, var(--accent-purple), #A855F7);">
+                                <i class='bx bx-scan'></i> CAPTURE & ANALYZE
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Upload Section -->
+                    <div id="section-upload" style="display: none;">
+                        <form action="/scan" method="POST" enctype="multipart/form-data" id="scan-form">
+                            <div class="upload-zone" id="upload-zone-trigger" onclick="document.getElementById('file-input').click()">
+                                <i class='bx bx-broadcast'></i>
+                                <p style="font-weight: 600; margin-bottom: 5px;">Awaiting Data Packet</p>
+                                <p style="font-size: 0.8rem; color: var(--text-muted);">Drop file or tap to select</p>
+                            </div>
+                            <input type="file" name="file" id="file-input" style="display: none;" accept="image/*">
+                            <button type="submit" class="btn btn-teal" id="manual-init-btn" style="width: 100%; margin-top: 24px;">
+                                <i class='bx bx-upload'></i> UPLOAD DATA
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Common Loader -->
+                    <div id="scan-loader" class="loader">
+                        <div class="spinner"></div>
+                        <p style="margin-top: 20px; color: var(--accent-teal); font-weight: 600; letter-spacing: 1px;">PROCESSING BIO-DATA...</p>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <h2 class="card-title"><i class='bx bx-atom'></i> ANALYSIS FEEDBACK</h2>
+                    {% if result %}
+                        <div style="animation: glassFadeIn 0.8s ease-out;">
+                            <div style="display: flex; gap: 24px; align-items: center; margin-bottom: 32px;">
+                                {% if image_data %}
+                                    <div style="position: relative;">
+                                        <img src="data:image/jpeg;base64,{{ image_data }}" style="width: 140px; height: 140px; border-radius: 20px; object-fit: cover; border: 2px solid var(--accent-teal); box-shadow: 0 0 20px rgba(45, 212, 191, 0.3);">
+                                        <div style="position: absolute; top: -10px; right: -10px; width: 30px; height: 30px; background: var(--bg-dark); border: 2px solid var(--accent-teal); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--accent-teal);">
+                                            <i class='bx bx-target-lock'></i>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                                <div>
+                                    <h3 style="font-size: 1.5rem; margin-bottom: 12px; font-weight: 800; letter-spacing: -0.5px;">{{ result.product_name }}</h3>
+                                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                        {% if 'Fresh' in result.label %}
+                                            <span class="badge badge-fresh" style="font-size: 0.8rem; padding: 6px 12px;"><i class='bx bx-check-shield'></i> OPTIMAL FRESHNESS</span>
+                                        {% elif 'Spoil' in result.label %}
+                                            <span class="badge badge-spoiled" style="font-size: 0.8rem; padding: 6px 12px;"><i class='bx bx-error-circle'></i> BIO-DEGRADATION DETECTED</span>
+                                        {% else %}
+                                            <span class="badge badge-warning" style="font-size: 0.8rem; padding: 6px 12px; background: rgba(255, 107, 107, 0.1); color: #FF6B6B; border: 1px solid rgba(255, 107, 107, 0.2);"><i class='bx bx-help-circle'></i> UNSTABLE BIOSYSTEM</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Scientific Report Grid -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 24px;">
+                                <div style="background: rgba(255,255,255,0.03); border-radius: 12px; padding: 15px; border-left: 3px solid var(--accent-teal);">
+                                    <p style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 5px;">Estimated Stability</p>
+                                    <p style="font-size: 1.1rem; color: white; font-weight: 700;">{{ result.expiry_estimate }}</p>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.03); border-radius: 12px; padding: 15px; border-left: 3px solid var(--accent-purple);">
+                                    <p style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 5px;">Confidence Index</p>
+                                    <p style="font-size: 1.1rem; color: white; font-weight: 700;">{{ (result.confidence * 100)|round(1) }}% VALIDITY</p>
+                                </div>
+                            </div>
+
+                            <div style="background: rgba(45, 212, 191, 0.05); border: 1px solid rgba(45, 212, 191, 0.2); border-radius: 15px; padding: 20px;">
+                                <h4 style="font-size: 0.8rem; color: var(--accent-teal); text-transform: uppercase; font-weight: 800; margin-bottom: 12px; letter-spacing: 1px;"><i class='bx bx-edit-alt'></i> SMART PROTOCOL</h4>
+                                <p style="font-size: 0.95rem; line-height: 1.6; color: var(--text-light); text-align: justify;">{{ result.recommendation }}</p>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div style="text-align: center; color: var(--text-muted); padding: 60px;">
+                            <i class='bx bx-fingerprint' style="font-size: 4rem; opacity: 0.2; margin-bottom: 24px; animation: pulse 2s infinite;"></i>
+                            <p style="letter-spacing: 1px;">SCANNER ARMED. AWAITING FEED.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+
+        <!-- Inventory -->
+        <section id="inventory" class="view-section">
+            <h2 style="margin-bottom: 32px; font-weight: 700; display: flex; align-items: center; gap: 15px;">
+                <i class='bx bx-data' style="color: var(--accent-teal);"></i> LARDER REGISTRY
+            </h2>
+            <div class="content-grid" style="grid-template-columns: 1fr 2fr;">
+                <div class="glass-card">
+                    <h2 class="card-title">MANUAL LOG</h2>
+                    <form action="/add_manual" method="POST">
+                        <div class="form-group">
+                            <label class="form-label">Item Designation</label>
+                            <input type="text" name="product_name" class="form-input" placeholder="e.g. Avocado Pack" required>
+                        </div>
+                        <div style="display: flex; gap: 16px;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Units</label>
+                                <input type="number" name="quantity" class="form-input" value="1" min="1">
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Initial State</label>
+                                <select name="status" class="form-input" style="background: #121212;">
+                                    <option value="Fresh">Fresh</option>
+                                    <option value="Slightly Spoiled">Warning</option>
+                                    <option value="Rotten">Expired</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Projected Expiry</label>
+                            <input type="date" name="expiry_date" class="form-input" required>
+                        </div>
+                        <button type="submit" class="btn btn-teal" style="width: 100%;">REGISTER ITEM</button>
+                    </form>
+                </div>
+                <div class="glass-card">
+                    <h2 class="card-title">ACTIVE STOCK</h2>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ITEM</th>
+                                    <th>QTY</th>
+                                    <th>BIO-STATUS</th>
+                                    <th>EXPIRY</th>
+                                    <th>ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if history %}
+                                    {% for record in history %}
+                                    <tr {% if record.days_left is defined and 0 <= record.days_left <= 1 %}style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3);" class="expiry-alert"{% endif %}>
+                                        <td style="font-weight: 600;">
+                                            {% if record.days_left is defined and 0 <= record.days_left <= 1 %}
+                                                <i class='bx bx-error' style="color: #EF4444; margin-right: 5px;"></i>
+                                            {% endif %}
+                                            {{ record.product }}
+                                        </td>
+                                        <td style="color: var(--accent-teal); font-weight: 700;">{{ record.quantity }}</td>
+                                        <td>
+                                            {% if record.days_left is defined and record.days_left < 0 %}
+                                                <span class="badge badge-expired">EXPIRED</span>
+                                            {% elif record.days_left is defined and record.days_left <= 1 %}
+                                                <span class="badge badge-soon">CRITICAL ({{ record.days_left }}d)</span>
+                                            {% elif 'Fresh' in record.label %}
+                                                <span class="badge badge-fresh">FRESH</span>
+                                            {% else %}
+                                                <span class="badge badge-soon">WARNING</span>
+                                            {% endif %}
+                                        </td>
+                                        <td><span style="font-weight: 500;">{{ record.expiry }}</span></td>
+                                        <td>
+                                            <form onsubmit="deleteItem(event, '{{ record.id }}')" style="margin:0;">
+                                                <input type="hidden" name="id" value="{{ record.id }}" />
+                                                <button type="submit" style="background:none; border:none; color:var(--text-muted); cursor:pointer;"><i class='bx bx-x-circle' style="font-size: 1.25rem;"></i></button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 50px;">REGISTER IS EMPTY.</td></tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Placeholder Sections -->
+        <section id="alerts" class="view-section">
+            <h2 style="margin-bottom: 32px; font-weight: 700;">NOTIFICATIONS</h2>
+            <div class="glass-card" style="text-align: center; color: var(--text-muted); padding: 80px;">
+                <i class='bx bx-radar' style="font-size: 4.5rem; margin-bottom: 24px; opacity: 0.2;"></i>
+                <p style="letter-spacing: 1.5px;">SYSTEM CLEAR. NO ACTIVE ALERTS.</p>
+            </div>
+        </section>
+
+        <section id="reports" class="view-section">
+            <h2 style="margin-bottom: 32px; font-weight: 700;">WASTAGE ANALYTICS</h2>
+            <div class="content-grid" style="grid-template-columns: 1fr 1fr;">
+                <div class="glass-card">
+                    <h3 style="margin-bottom: 24px; font-size: 1rem; color: var(--accent-teal);">STOCK ROTATION</h3>
+                    <div style="height: 300px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.02); border-radius: 12px; border: 1px dashed var(--glass-border); color: var(--text-muted);">
+                        [ CRYSTAL ANALYTICS ENGINE OFFLINE ]
+                    </div>
+                </div>
+                <div class="glass-card">
+                    <h3 style="margin-bottom: 24px; font-size: 1rem; color: var(--accent-gold);">METERED EFFICIENCY</h3>
+                    <div style="height: 300px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.02); border-radius: 12px; border: 1px dashed var(--glass-border); color: var(--text-muted);">
+                        [ BIO-WASTE METRICS UNAVAILABLE ]
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="settings" class="view-section">
+            <h2 style="margin-bottom: 32px; font-weight: 700;">PROTOCOL CONFIG</h2>
+            <div class="glass-card" style="max-width: 600px;">
+                <div class="form-group">
+                    <label class="form-label">SYNC EMAIL</label>
+                    <input type="email" class="form-input" value="admin@foodcrystal.ai">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">DETECTION RESOLUTION</label>
+                    <select class="form-input" style="background:#121212;">
+                        <option>ULTRA (3-DAY BUFFER)</option>
+                        <option selected>BALANCED (2-DAY BUFFER)</option>
+                        <option>ECONOMY (1-DAY BUFFER)</option>
+                    </select>
+                </div>
+                <button class="btn btn-teal" style="width: auto; padding: 14px 40px;">SAVE CONFIG</button>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // --- Real-time Socket.io ---
+        const socket = io();
+
+        socket.on('connect', () => {
+            console.log('Connected to Real-time Stream');
+        });
+
+        socket.on('inventory_updated', (data) => {
+            console.log('Inventory Sync Received');
+            // Flash a small indicator or refresh data
+            refreshDashboard();
+        });
+
+        async function refreshDashboard() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                // Update stats
+                document.querySelectorAll('.stat-value')[0].innerText = data.total_items;
+                document.querySelectorAll('.stat-value')[1].innerText = data.expired_count;
+                document.querySelectorAll('.stat-value')[2].innerText = data.expiring_soon_count;
+                
+                // Update Tables
+                renderHistoryTables(data.history);
+            } catch (err) { console.error('Sync failed', err); }
+        }
+
+        function renderHistoryTables(history) {
+            // Helper to render a single row
+            const getRowHtml = (record) => `
+                <tr>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            ${record.image ? `<img src="data:image/jpeg;base64,${record.image}" style="width: 40px; height: 40px; border-radius: 10px; object-fit: cover; border: 1px solid var(--glass-border);">` : `
+                                <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; border: 1px solid var(--glass-border);">
+                                    <i class='bx bx-cube' style="font-size: 1.25rem; color: var(--text-muted);"></i>
+                                </div>
+                            `}
+                            <span style="font-weight: 600;">${record.product}</span>
+                        </div>
+                    </td>
+                    <td><span style="font-size: 0.8rem; color: var(--text-muted);">${record.source || 'Manual'}</span></td>
+                    <td>
+                        <span class="badge ${record.days_left < 0 ? 'badge-expired' : (record.days_left <= 1 ? 'badge-soon' : (record.label.includes('Fresh') ? 'badge-fresh' : 'badge-soon'))}">
+                            ${record.days_left < 0 ? 'EXPIRED' : (record.days_left <= 1 ? `CRITICAL (${record.days_left}d)` : record.label.toUpperCase())}
+                        </span>
+                    </td>
+                    <td><span style="font-weight: 500;">${record.expiry}</span></td>
+                    <td>
+                        <form onsubmit="deleteItem(event, '${record.id}')" style="margin:0;">
+                            <input type="hidden" name="id" value="${record.id}" />
+                            <button type="submit" style="background:none; border:none; color:var(--text-muted); cursor:pointer;"><i class='bx bx-x-circle' style="font-size: 1.25rem;"></i></button>
+                        </form>
+                    </td>
+                </tr>
+            `;
+
+            // Update Recent Activity (Dashboard)
+            const recentBody = document.querySelector('#overview table tbody');
+            recentBody.innerHTML = history.length ? history.slice(0, 5).map(getRowHtml).join('') : `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No scan history detected.</td></tr>`;
+
+            // Update Active Stock (Inventory)
+            const inventoryBody = document.querySelector('#inventory table tbody');
+            inventoryBody.innerHTML = history.length ? history.map(getRowHtml).join('') : `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 50px;">REGISTER IS EMPTY.</td></tr>`;
+        }
+
+        async function deleteItem(e, id) {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('id', id);
+            await fetch('/delete_history', { method: 'POST', body: formData });
+            // Socket will trigger refresh for us!
+        }
+
+        // --- View Switching ---
+        function switchView(viewId) {
+            document.querySelectorAll('.view-section').forEach(section => section.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.getAttribute('onclick').includes(viewId)) item.classList.add('active');
+            });
+        }
+
+        {% if result %} switchView('scan'); {% endif %}
+
+        // --- Duality Scanner Logic ---
+        const scanForm = document.getElementById('scan-form');
+        const scanLoader = document.getElementById('scan-loader');
+        const fileInput = document.getElementById('file-input');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startBtn = document.getElementById('start-camera');
+        const captureBtn = document.getElementById('capture-image');
+        const scannerContainer = document.getElementById('scanner-container');
+        const cameraPlaceholder = document.getElementById('camera-placeholder');
+        const liveIndicator = document.getElementById('live-indicator');
+        
+        let stream = null;
+
+        function switchScanner(mode) {
+            const secCamera = document.getElementById('section-camera');
+            const secUpload = document.getElementById('section-upload');
+            const btnCamera = document.getElementById('btn-tab-camera');
+            const btnUpload = document.getElementById('btn-tab-upload');
+
+            if (mode === 'camera') {
+                secCamera.style.display = 'block';
+                secUpload.style.display = 'none';
+                btnCamera.style.background = 'var(--accent-teal)';
+                btnCamera.style.color = 'black';
+                btnUpload.style.background = 'transparent';
+                btnUpload.style.color = 'white';
+            } else {
+                secCamera.style.display = 'none';
+                secUpload.style.display = 'block';
+                btnUpload.style.background = 'var(--accent-teal)';
+                btnUpload.style.color = 'black';
+                btnCamera.style.background = 'transparent';
+                btnCamera.style.color = 'white';
+                
+                // Stop camera if switching to upload
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                    video.style.display = 'none';
+                    cameraPlaceholder.style.display = 'block';
+                    liveIndicator.style.display = 'none';
+                    startBtn.style.display = 'flex';
+                    captureBtn.style.display = 'none';
+                }
+            }
+        }
+
+        // Start Camera Sensor
+        if (startBtn) {
+            startBtn.addEventListener('click', async () => {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: 'environment' } 
+                    });
+                    video.srcObject = stream;
+                    video.style.display = 'block';
+                    cameraPlaceholder.style.display = 'none';
+                    liveIndicator.style.display = 'flex';
+                    startBtn.style.display = 'none';
+                    captureBtn.style.display = 'flex';
+                    console.log("Optical sensor synchronized.");
+                } catch (err) {
+                    console.error("Camera error:", err);
+                    alert("Optical link failed. Please check hardware permissions.");
+                }
+            });
+        }
+
+        // Capture from Camera
+        if (captureBtn) {
+            captureBtn.addEventListener('click', () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+
+                canvas.toBlob((blob) => {
+                    const dataTransfer = new DataTransfer();
+                    const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
+                    dataTransfer.items.add(file);
+                    fileInput.files = dataTransfer.files;
+                    
+                    document.getElementById('section-camera').style.display = 'none';
+                    scanLoader.style.display = 'flex';
+                    scanForm.submit();
+                }, 'image/jpeg', 0.9);
+            });
+        }
+
+        // Handle File Selection
+        if (fileInput) {
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length > 0) {
+                    document.getElementById('section-upload').style.display = 'none';
+                    scanLoader.style.display = 'flex';
+                    scanForm.submit();
+                }
+            });
+        }
+
+        if (scanForm) {
+            scanForm.addEventListener('submit', () => {
+                document.getElementById('section-upload').style.display = 'none';
+                scanLoader.style.display = 'flex';
+            });
+        }
+
+        // --- Trends Chart ---
+        const ctx = document.getElementById('trendsChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'],
+                datasets: [{
+                    label: 'INFLOW',
+                    data: [15, 25, 10, 18, 12, 22, 19],
+                    borderColor: '#2DD4BF',
+                    backgroundColor: 'rgba(45, 212, 191, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointBackgroundColor: '#2DD4BF'
+                }, {
+                    label: 'OUTFLOW',
+                    data: [5, 8, 5, 4, 10, 6, 8],
+                    borderColor: '#EF4444',
+                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 2,
+                    borderDash: [5, 5]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, labels: { color: '#9CA3AF', font: { weight: 'bold' } } }
+                },
+                scales: {
+                    y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9CA3AF' } },
+                    x: { grid: { display: false }, ticks: { color: '#9CA3AF' } }
+                }
+            }
+        });
+
+        // Add subtle animation for pulse effect
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse {
+                0% { transform: scale(1); opacity: 0.2; }
+                50% { transform: scale(1.1); opacity: 0.3; }
+                100% { transform: scale(1); opacity: 0.2; }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
